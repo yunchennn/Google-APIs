@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 from collections import defaultdict
 import re
 
-def _search_google_patents(terms: list, start_date:datetime, end_date:datetime, batch=0):
+def search_google_patents(terms: list, start_date:datetime, end_date:datetime, batch=0):
     """
     return structure
     {
@@ -158,9 +158,7 @@ def search_google_scholar(terms:list, start_year:datetime, end_year:datetime, pa
         for num in range(batch):
             base_url = f"https://scholar.google.com/scholar"
             term_name = term.replace(" ", "+").lower()
-            # url = f'{base_url}?q=({term_name})&before=priority:{end_year_str}&after=priority:{start_year_str}&oq={term_name}&page={num}'
-            url = f'{base_url}?as_vis={vis_int}&q="{term_name}"&as_sdt={patent_str}&as_ylo={start_year_str}&as_yhi={end_year_str}&scisbd={rel_int}'
-            print(url)
+            url = f'{base_url}?as_vis={vis_int}&q="{term_name}"&as_sdt={patent_str}&as_ylo={start_year_str}&as_yhi={end_year_str}&scisbd={rel_int}&start={num*10}'
             # print(url)
 
             options = Options()
@@ -172,20 +170,62 @@ def search_google_scholar(terms:list, start_year:datetime, end_year:datetime, pa
             time.sleep(5)
             soup = BeautifulSoup(driver.page_source, "html.parser")
             results = soup.find_all("div", class_="gs_r gs_or gs_scl")
-            print(len(results))
             for item in results:
                 title = item.find("h3", class_="gs_rt").get_text(strip=True)
-                print(title)
-                snippet = item.find("div", class_="gs_rs").get_text(strip=True)
+                a_tag = soup.find('h3', class_='gs_rt').find('a')
+                href = a_tag['href']
+                pdf_link = soup.find('div', class_='gs_or_ggsm').find('a')['href']
+                div = soup.find('div', class_='gs_rs')
 
-                links = item.select('div.gs_fl a')
-                third_link_txt = links[2].get_text()
-                match = re.search(r'\d+', third_link_txt)
-                if match:
-                    print(int(match.group()))
+                for b in div.find_all('b'):
+                    b.string = ''
 
+                for br in div.find_all('br'):
+                    br.replace_with(' ')  
 
-            
+                snippet = div.get_text(strip=True)
+
+                ref_div = item.find("div", class_="gs_fl gs_flb")
+                citation_count = None
+
+                if ref_div:
+                    a_tags = ref_div.find_all("a")
+                    if len(a_tags) >= 3:
+                        third_a = a_tags[2]
+                        match = re.search(r'\d+', third_a.text)
+                        if match:
+                            citation_count = int(match.group())
+
+                detail = item.find("div", class_="gs_a")
+                authors = [a.text for a in detail.find_all('a')]
+
+                text = detail.get_text()
+                rest = [r.strip() for r in text.split(',') if r.strip()]  
+
+                if len(rest) >= 2:
+                    publisher = rest[-1]
+                    year = publisher.split(' - ')[0]
+                    pub = publisher.split(' - ')[-1]
+
+                    journal = rest[-2].split('-')[-1].strip() 
+                else:
+                    publisher = journal = "N/A"
+
+                sample = {
+                    "position": num,
+                    "rank": idx,
+                    "title":title,
+                    "cited": citation_count,
+                    "url":href,
+                    "pdfLink":pdf_link,
+                    "snippet":snippet,
+                    "authors":authors,
+                    "journal":journal,
+                    "publisher":pub,
+                    "year": year
+                }
+                all_results.append(sample)
+
 
             driver.quit()
 
@@ -199,7 +239,7 @@ if __name__ == "__main__":
     end_date = datetime.now()
     start_date = end_date - timedelta(days=365 * years)
     batch = 5 # get 5 pages
-    # res = _search_google_patents(terms, start_date, end_date, batch)
+    # res = search_google_patents(terms, start_date, end_date, batch)
     # print(res)
     # print(len(res))
 
